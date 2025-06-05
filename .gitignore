@@ -1,0 +1,22 @@
+# Don't commit environment secrets
+.env
+
+# Node modules (for langchain-server)
+langchain-server/node_modules
+
+# TypeScript build artifacts (if used)
+langchain-server/dist
+langchain-server/*.js
+langchain-server/*.js.map
+
+# Docker volumes (if mapped to host)
+pgdata/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS/Editor files
+.DS_Store
+Thumbs.db
+.vscode
