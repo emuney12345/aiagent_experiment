@@ -42,7 +42,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - ./langchain-server:/usr/src/app
+      - ./langchain-server:/app
 
 volumes:
   pgdata:

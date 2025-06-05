@@ -1,17 +1,11 @@
-FROM node:18
+FROM python:3.10-slim
 
-# Create app directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package files and install
-COPY package*.json ./
-RUN npm install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the source code
 COPY . .
 
-# Expose port
 EXPOSE 3000
-
-# Start the app
-CMD ["npm", "run", "start"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]
