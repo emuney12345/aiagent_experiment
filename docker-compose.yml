@@ -39,8 +39,7 @@ services:
     build: ./langchain-server
     ports:
       - "3000:3000"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    env_file: .env
     volumes:
       - ./langchain-server:/app
 
