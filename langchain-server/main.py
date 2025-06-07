@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 import os
+import json
 
 # Load .env variables
 load_dotenv()
@@ -17,7 +18,10 @@ USE_MOCK = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
 if USE_MOCK:
     from langchain.llms.fake import FakeListLLM
     llm = FakeListLLM(responses=[
-        "Mock: This is a test response. No OpenAI key was used."
+        json.dumps({
+            "action": "respond",
+            "reason": "User is asking a direct question about a deadline."
+        })
     ])
 else:
     from langchain_community.chat_models import ChatOpenAI
@@ -71,16 +75,18 @@ def generate_response(email: EmailRequest):
         What should I do with this email?
         """
 
-        # AI Call (real or fake)
+        # AI Call (real or mock)
         if USE_MOCK:
-            response = llm.invoke("This is a fake input (ignored)")
+            raw = llm.invoke("Mock input")
+            parsed = json.loads(raw)
         else:
-            response = llm.invoke([
+            raw = llm.invoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt)
             ])
+            parsed = {"response": raw}  # fallback structure for now
 
-        return {"response": response}
+        return parsed
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
