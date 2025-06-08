@@ -20,7 +20,7 @@ if USE_MOCK:
     llm = FakeListLLM(responses=[
         json.dumps({
             "action": "respond",
-            "reason": "User is asking a direct question about a deadline."
+            "reason": "This is a test response from AI."
         })
     ])
 else:

@@ -27,8 +27,12 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=securepass
       - N8N_HOST=localhost
       - N8N_PORT=5678
+      - N8N_PERSONAL_MODE=false
+      - N8N_ENCRYPTION_KEY=some-long-static-secret-key
     depends_on:
       - postgres
+    volumes:
+      - ./n8n_data:/home/node/.n8n
 
   chromadb:
     image: chromadb/chroma
