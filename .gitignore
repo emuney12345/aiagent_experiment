@@ -1,22 +1,41 @@
-# Don't commit environment secrets
+# 🔐 Don't commit environment secrets
 .env
+.env.*                # Ignore other env variants like .env.local or .env.prod
 
-# Node modules (for langchain-server)
-langchain-server/node_modules
+# 🧠 Ignore local n8n workflow and credential storage
+n8n_data/
 
-# TypeScript build artifacts (if used)
-langchain-server/dist
-langchain-server/*.js
-langchain-server/*.js.map
-
-# Docker volumes (if mapped to host)
+# 🐳 Docker volumes
 pgdata/
 
-# Logs
+# 🚀 Node modules (for langchain-server or any other frontend)
+langchain-server/node_modules
+chatbot-server/node_modules
+
+# 📦 TypeScript build artifacts (if used)
+langchain-server/dist
+chatbot-server/dist
+langchain-server/*.js
+chatbot-server/*.js
+langchain-server/*.js.map
+chatbot-server/*.js.map
+
+# 🐍 Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# 📝 Logs
 *.log
 npm-debug.log*
 
-# OS/Editor files
+# 🧑‍💻 Editor/OS metadata
+.vscode/
 .DS_Store
 Thumbs.db
-.vscode
+*.swp
+*.bak
+*.tmp
+*~

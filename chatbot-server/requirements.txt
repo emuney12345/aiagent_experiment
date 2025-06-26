@@ -1,0 +1,9 @@
+# chatbot-server/requirements.txt
+
+fastapi
+uvicorn
+langchain
+openai
+pgvector
+psycopg2-binary
+python-dotenv
