@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mini Chatbot</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+    #chat-box {
+      border: 1px solid #ccc;
+      padding: 15px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 15px;
+      white-space: pre-wrap;
+    }
+    input, button {
+      padding: 8px;
+      font-size: 16px;
+    }
+    #question {
+      width: 75%;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 Local Chatbot (gpt-3.5-turbo)</h1>
+  <div id="chat-box"></div>
+  <input id="question" type="text" placeholder="Ask a question..." />
+  <button onclick="sendMessage()">Send</button>
+
+  <script>
+    const chatBox = document.getElementById('chat-box');
+    const questionInput = document.getElementById('question');
+
+    async function sendMessage() {
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      appendToChat(`🧑 You: ${question}`);
+      questionInput.value = '';
+
+      try {
+        const response = await fetch('http://localhost:8001/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, session_id: 'browser-dev' })
+        });
+
+        const data = await response.json();
+        appendToChat(`🤖 Bot: ${data.response}`);
+      } catch (err) {
+        appendToChat(`❌ Error: ${err.message}`);
+      }
+    }
+
+    function appendToChat(message) {
+      chatBox.innerText += message + '\n\n';
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Optional: press Enter to send
+    questionInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  </script>
+</body>
+</html>

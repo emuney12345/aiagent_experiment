@@ -1,6 +1,6 @@
 # chatbot-server/chains.py
 
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 from vectorstore import get_vectorstore
 from langchain.prompts import PromptTemplate

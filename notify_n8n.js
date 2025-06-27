@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = 'https://dmpguhooyvgmotwpffhn.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtcGd1aG9veXZnbW90d3BmZmhuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTQ4OTQzMSwiZXhwIjoyMDY1MDY1NDMxfQ.Dm9OM9zvKTu41hvh10Qoj8c0fY7HxrEPHKEiuaxgxTE' // Use service role key (from Supabase > Settings > API)
-const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/new-resident-welcome'
+const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/new-resident-welcome';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 

@@ -1,8 +1,8 @@
 # chatbot-server/vectorstore.py
 
 import os
-from langchain.vectorstores.pgvector import PGVector
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_community.vectorstores import PGVector
+from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv()
