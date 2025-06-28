@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from chains import run_chat_chain
+from chatbot_server.chains import run_chat_chain
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()

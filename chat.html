@@ -47,15 +47,17 @@
         const response = await fetch('http://localhost:8001/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, session_id: 'browser-dev' })
+          body: JSON.stringify({ question }) // 👈 CORRECT
         });
 
         const data = await response.json();
+        console.log('Raw response data:', data);
         appendToChat(`🤖 Bot: ${data.response}`);
       } catch (err) {
         appendToChat(`❌ Error: ${err.message}`);
       }
     }
+
 
     function appendToChat(message) {
       chatBox.innerText += message + '\n\n';

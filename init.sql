@@ -1,0 +1,2 @@
+CREATE DATABASE chatbot_db;
+CREATE DATABASE n8n_db;

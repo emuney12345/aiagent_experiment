@@ -2,7 +2,7 @@
 
 from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
-from vectorstore import get_vectorstore
+from chatbot_server.vectorstore import get_vectorstore
 from langchain.prompts import PromptTemplate
 
 llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
