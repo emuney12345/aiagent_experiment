@@ -36,6 +36,13 @@
     const chatBox = document.getElementById('chat-box');
     const questionInput = document.getElementById('question');
 
+    function getSessionId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("session") || "default";
+    }
+
+    const sessionId = getSessionId();
+
     async function sendMessage() {
       const question = questionInput.value.trim();
       if (!question) return;
@@ -47,22 +54,47 @@
         const response = await fetch('http://localhost:8001/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question }) // 👈 CORRECT
+          body: JSON.stringify({ question, session_id: sessionId })
         });
 
+        console.log(`[chat] status: ${response.status}`);
         const data = await response.json();
-        console.log('Raw response data:', data);
+        console.log('[chat] data:', data);
+
+        if (!response.ok) {
+          appendToChat(`❌ Server error (${response.status}): ${data.detail || 'Unknown error'}`);
+          return;
+        }
+
         appendToChat(`🤖 Bot: ${data.response}`);
       } catch (err) {
+        console.error('[chat] fetch error:', err);
         appendToChat(`❌ Error: ${err.message}`);
       }
     }
-
 
     function appendToChat(message) {
       chatBox.innerText += message + '\n\n';
       chatBox.scrollTop = chatBox.scrollHeight;
     }
+
+    // Load recent chat history
+    fetch(`http://localhost:8001/history/${sessionId}`)
+      .then(res => {
+        console.log(`[history] status: ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[history] data:', data);
+        data.history.forEach(msg => {
+          appendToChat(`🧑 You: ${msg.question}`);
+          appendToChat(`🤖 Bot: ${msg.answer}`);
+        });
+      })
+      .catch(err => {
+        console.warn('[history] fetch error:', err);
+        appendToChat(`⚠️ Failed to load history: ${err.message}`);
+      });
 
     // Optional: press Enter to send
     questionInput.addEventListener('keydown', e => {
