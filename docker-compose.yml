@@ -54,5 +54,16 @@ services:
       - .:/app
       - ./pdfs:/app/pdfs
 
+  watcher:
+    build:
+      context: ./chatbot_server
+      dockerfile: Dockerfile   # reuse same image as chatbot-server
+    command: python synced_ingest.py
+    volumes:
+      - .:/app                # code + pdfs
+    depends_on:
+      - chatbot-server
+      - postgres
+
 volumes:
   pgdata:

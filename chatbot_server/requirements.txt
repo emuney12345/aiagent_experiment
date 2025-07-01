@@ -12,3 +12,4 @@ unstructured[all-docs]
 ocrmypdf
 pytesseract
 opencv-python-headless
+watchdog
