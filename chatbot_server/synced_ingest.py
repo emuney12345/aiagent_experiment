@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 from watchdog.observers.polling import PollingObserver as Observer   # cross-platform
 from watchdog.events import FileSystemEventHandler
 
-from ingest_docs import load_and_split
+from chatbot_server.ingest_docs import load_and_split
 from chatbot_server.vectorstore import get_vectorstore
 
 # ─────────────────── env & db setup ───────────────────────────────

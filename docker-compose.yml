@@ -58,7 +58,7 @@ services:
     build:
       context: ./chatbot_server
       dockerfile: Dockerfile   # reuse same image as chatbot-server
-    command: python synced_ingest.py
+    command: python -m chatbot_server.synced_ingest
     volumes:
       - .:/app                # code + pdfs
     depends_on:
