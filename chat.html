@@ -4,102 +4,78 @@
   <meta charset="UTF-8" />
   <title>Mini Chatbot</title>
   <style>
-    body {
-      font-family: sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-    }
-    #chat-box {
-      border: 1px solid #ccc;
-      padding: 15px;
-      height: 300px;
-      overflow-y: auto;
-      margin-bottom: 15px;
-      white-space: pre-wrap;
-    }
-    input, button {
-      padding: 8px;
-      font-size: 16px;
-    }
-    #question {
-      width: 75%;
-    }
+    body         { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+    #chat-box    { border: 1px solid #ccc; padding: 15px; height: 300px;
+                   overflow-y: auto; margin-bottom: 15px; white-space: pre-wrap; }
+    input,button { padding: 8px; font-size: 16px; }
+    #question    { width: 75%; }
   </style>
 </head>
 <body>
   <h1>🧠 Local Chatbot (gpt-3.5-turbo)</h1>
   <div id="chat-box"></div>
-  <input id="question" type="text" placeholder="Ask a question..." />
+  <input id="question" type="text" placeholder="Ask a question…" />
   <button onclick="sendMessage()">Send</button>
 
   <script>
-    const chatBox = document.getElementById('chat-box');
+    /* ─── helpers ─────────────────────────────── */
+    const chatBox       = document.getElementById('chat-box');
     const questionInput = document.getElementById('question');
+    const sessionId     = new URLSearchParams(location.search).get('session') || 'default';
 
-    function getSessionId() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("session") || "default";
-    }
-
-    const sessionId = getSessionId();
-
-    async function sendMessage() {
-      const question = questionInput.value.trim();
-      if (!question) return;
-
-      appendToChat(`🧑 You: ${question}`);
-      questionInput.value = '';
-
-      try {
-        const response = await fetch('http://localhost:8001/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, session_id: sessionId })
-        });
-
-        console.log(`[chat] status: ${response.status}`);
-        const data = await response.json();
-        console.log('[chat] data:', data);
-
-        if (!response.ok) {
-          appendToChat(`❌ Server error (${response.status}): ${data.detail || 'Unknown error'}`);
-          return;
-        }
-
-        appendToChat(`🤖 Bot: ${data.response}`);
-      } catch (err) {
-        console.error('[chat] fetch error:', err);
-        appendToChat(`❌ Error: ${err.message}`);
-      }
-    }
-
-    function appendToChat(message) {
-      chatBox.innerText += message + '\n\n';
+    function append(text) {
+      chatBox.textContent += text + '\n\n';
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // Load recent chat history
+    /* ─── send flow ───────────────────────────── */
+    async function sendMessage() {
+      const q = questionInput.value.trim();
+      if (!q) return;
+
+      append(`🧑 You: ${q}`);
+      questionInput.value = '';
+
+      try {
+        const res  = await fetch('http://localhost:8001/chat', {
+          method : 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body   : JSON.stringify({ question: q, session_id: sessionId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          append(`❌ Server error (${res.status}): ${data.detail ?? 'unknown'}`);
+          return;
+        }
+        append(`🤖 Bot: ${data.response}`);
+      } catch (e) {
+        append(`❌ Network error: ${e.message}`);
+      }
+    }
+    questionInput.addEventListener('keydown', e => e.key === 'Enter' && sendMessage());
+
+    /* ─── history loader ──────────────────────── */
     fetch(`http://localhost:8001/history/${sessionId}`)
-      .then(res => {
-        console.log(`[history] status: ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        console.log('[history] data:', data);
-        data.history.forEach(msg => {
-          appendToChat(`🧑 You: ${msg.question}`);
-          appendToChat(`🤖 Bot: ${msg.answer}`);
+      .then(r => r.json())
+      .then(raw => {
+        // raw could be ① an array, or ② { history:[…] }
+        const history = Array.isArray(raw) ? raw :
+                        Array.isArray(raw.history) ? raw.history : [];
+
+        history.forEach(turn => {
+          // OpenAI-style {role, content}
+          if (turn.role && (turn.content || turn.answer)) {
+            const txt = turn.content ?? turn.answer;
+            append(`${turn.role === 'user' ? '🧑 You' : '🤖 Bot'}: ${txt}`);
+          }
+          // Legacy {question, answer}
+          else if (turn.question && turn.answer) {
+            append(`🧑 You: ${turn.question}`);
+            append(`🤖 Bot: ${turn.answer}`);
+          }
         });
       })
-      .catch(err => {
-        console.warn('[history] fetch error:', err);
-        appendToChat(`⚠️ Failed to load history: ${err.message}`);
-      });
-
-    // Optional: press Enter to send
-    questionInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendMessage();
-    });
+      .catch(e => append(`⚠️ Failed to load history: ${e.message}`));
   </script>
 </body>
 </html>
