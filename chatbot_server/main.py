@@ -27,12 +27,10 @@ class ChatRequest(BaseModel):
     question: str
     session_id: str = "default"
 
-# === Routes ===
 @app.post("/chat")
 async def chat(request: ChatRequest):
     response = run_chat_chain(request.question, session_id=request.session_id)
 
-    # Fallback if RAG result is unhelpful
     if is_unhelpful(response):
         response = query_openai_direct(request.question)
 
@@ -44,8 +42,8 @@ async def get_history(session_id: str):
     history = fetch_history(session_id)
     return {"history": history}
 
-# === Database config ===
-MAX_HISTORY_PER_SESSION = 20
+# === Config ===
+MAX_HISTORY_PROMPTS = 20  # each prompt = 1 user + 1 bot entry
 
 DB_HOST = os.getenv("POSTGRES_HOST", "postgres")
 DB_PORT = os.getenv("POSTGRES_PORT", "5432")
@@ -65,31 +63,29 @@ def get_conn():
 def store_chat(session_id: str, question: str, answer: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Insert both user and assistant messages
             cur.execute(
                 """
                 INSERT INTO chat_history (session_id, role, answer)
-                VALUES (%s, %s, %s)
+                VALUES (%s, %s, %s), (%s, %s, %s)
                 """,
-                (session_id, 'user', question)
+                (session_id, 'user', question, session_id, 'assistant', answer)
             )
-            cur.execute(
-                """
-                INSERT INTO chat_history (session_id, role, answer)
-                VALUES (%s, %s, %s)
-                """,
-                (session_id, 'assistant', answer)
-            )
+
+            # Trim chat to keep only latest N pairs (2N rows)
             cur.execute(
                 """
                 DELETE FROM chat_history
-                WHERE id IN (
-                    SELECT id FROM chat_history
-                    WHERE session_id = %s
-                    ORDER BY created_at ASC
-                    OFFSET %s
-                )
+                WHERE id NOT IN (
+                    SELECT id FROM (
+                        SELECT id FROM chat_history
+                        WHERE session_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    ) AS latest
+                ) AND session_id = %s
                 """,
-                (session_id, MAX_HISTORY_PER_SESSION * 2)
+                (session_id, MAX_HISTORY_PROMPTS * 2, session_id)
             )
 
 def fetch_history(session_id: str):
@@ -103,11 +99,10 @@ def fetch_history(session_id: str):
                 ORDER BY created_at ASC
                 LIMIT %s
                 """,
-                (session_id, MAX_HISTORY_PER_SESSION * 2)
+                (session_id, MAX_HISTORY_PROMPTS * 2)
             )
             return [{"role": r, "answer": a} for r, a in cur.fetchall()]
 
-# === Fallback logic ===
 def is_unhelpful(text: str) -> bool:
     lowered = text.lower()
     return any(phrase in lowered for phrase in [
@@ -119,11 +114,9 @@ def is_unhelpful(text: str) -> bool:
         "need assistance with a specific topic"
     ])
 
-
 def query_openai_direct(prompt: str) -> str:
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model  = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-
+    model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
     completion = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}]
