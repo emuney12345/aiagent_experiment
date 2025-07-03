@@ -29,10 +29,18 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    response = run_chat_chain(request.question, session_id=request.session_id)
+    # Check if this is a direct GPT mode request
+    if request.question.startswith("[DIRECT_GPT_MODE]"):
+        # Strip the prefix and use direct GPT
+        clean_question = request.question.replace("[DIRECT_GPT_MODE]", "").strip()
+        response = query_openai_direct(clean_question)
+    else:
+        # Use the enhanced RAG + Excel chain
+        response = run_chat_chain(request.question, session_id=request.session_id)
 
-    if is_unhelpful(response):
-        response = query_openai_direct(request.question)
+        # Fallback to direct GPT if response is unhelpful
+        if is_unhelpful(response):
+            response = query_openai_direct(request.question)
 
     store_chat(request.session_id, request.question, response)
     return {"response": response}

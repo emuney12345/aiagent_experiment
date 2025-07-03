@@ -13,3 +13,5 @@ ocrmypdf
 pytesseract
 opencv-python-headless
 watchdog
+pandas
+openpyxl

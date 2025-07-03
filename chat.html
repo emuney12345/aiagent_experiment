@@ -2,30 +2,363 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Mini Chatbot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Business Assistant</title>
   <style>
-    body         { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-    #chat-box    { border: 1px solid #ccc; padding: 15px; height: 300px;
-                   overflow-y: auto; margin-bottom: 15px; white-space: pre-wrap; }
-    input,button { padding: 8px; font-size: 16px; }
-    #question    { width: 75%; }
+    /* Modern CSS Reset */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 800px;
+      height: 90vh;
+      max-height: 700px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+      position: relative;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      margin-top: 10px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 60px;
+      height: 30px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255,255,255,0.3);
+      transition: .4s;
+      border-radius: 30px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: rgba(255,255,255,0.5);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(30px);
+    }
+
+    .mode-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .current-mode {
+      font-size: 12px;
+      opacity: 0.8;
+      margin-top: 5px;
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #chat-box {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border: none;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      max-width: 85%;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    .user-message {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .bot-message {
+      background: white;
+      color: #333;
+      border: 1px solid #e9ecef;
+      margin-right: auto;
+    }
+
+    .error-message {
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fcc;
+      margin-right: auto;
+    }
+
+    .message-header {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 5px;
+      opacity: 0.8;
+    }
+
+    .input-container {
+      padding: 20px;
+      background: white;
+      border-top: 1px solid #e9ecef;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #question {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e9ecef;
+      border-radius: 25px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.3s ease;
+    }
+
+    #question:focus {
+      border-color: #667eea;
+    }
+
+    #send-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    #send-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    #send-btn:active {
+      transform: translateY(0);
+    }
+
+    .loading {
+      display: none;
+      padding: 10px;
+      text-align: center;
+      font-style: italic;
+      color: #666;
+    }
+
+    .typing-indicator {
+      display: none;
+      padding: 12px 16px;
+      background: white;
+      border: 1px solid #e9ecef;
+      border-radius: 12px;
+      margin-right: auto;
+      margin-bottom: 15px;
+      max-width: 85%;
+    }
+
+    .typing-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .typing-dots span {
+      height: 8px;
+      width: 8px;
+      background: #999;
+      border-radius: 50%;
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-dots span:nth-child(1) { animation-delay: 0s; }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typing {
+      0%, 60%, 100% { opacity: 0.3; }
+      30% { opacity: 1; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Scrollbar styling */
+    #chat-box::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #chat-box::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    #chat-box::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 10px;
+    }
+
+    #chat-box::-webkit-scrollbar-thumb:hover {
+      background: #a1a1a1;
+    }
   </style>
 </head>
 <body>
-  <h1>🧠 Local Chatbot (gpt-3.5-turbo)</h1>
-  <div id="chat-box"></div>
-  <input id="question" type="text" placeholder="Ask a question…" />
-  <button onclick="sendMessage()">Send</button>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 AI Business Assistant</h1>
+      <div class="mode-toggle">
+        <span class="mode-label">RAG Mode</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="mode-toggle">
+          <span class="slider"></span>
+        </label>
+        <span class="mode-label">GPT Direct</span>
+      </div>
+      <div class="current-mode" id="current-mode">RAG + Excel Tools Mode</div>
+    </div>
+    
+    <div class="chat-container">
+      <div id="chat-box"></div>
+      <div class="typing-indicator" id="typing-indicator">
+        <div class="typing-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="input-container">
+      <input id="question" type="text" placeholder="Ask a question or request Excel operations..." />
+      <button id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
 
   <script>
-    /* ─── helpers ─────────────────────────────── */
-    const chatBox       = document.getElementById('chat-box');
+    /* ─── DOM elements ─────────────────────────── */
+    const chatBox = document.getElementById('chat-box');
     const questionInput = document.getElementById('question');
-    const sessionId     = new URLSearchParams(location.search).get('session') || 'default';
+    const modeToggle = document.getElementById('mode-toggle');
+    const currentModeDisplay = document.getElementById('current-mode');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const sendBtn = document.getElementById('send-btn');
+    const sessionId = new URLSearchParams(location.search).get('session') || 'default';
 
-    function append(text) {
-      chatBox.textContent += text + '\n\n';
+    /* ─── mode management ─────────────────────── */
+    let isDirectGPTMode = false;
+    
+    modeToggle.addEventListener('change', function() {
+      isDirectGPTMode = this.checked;
+      updateModeDisplay();
+    });
+
+    function updateModeDisplay() {
+      currentModeDisplay.textContent = isDirectGPTMode ? 
+        'Direct GPT Mode' : 'RAG + Excel Tools Mode';
+    }
+
+    /* ─── message helpers ─────────────────────── */
+    function createMessage(content, isUser = false, isError = false) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${isUser ? 'user-message' : (isError ? 'error-message' : 'bot-message')}`;
+      
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'message-header';
+      headerDiv.textContent = isUser ? 'You' : (isError ? 'Error' : 'AI Assistant');
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.textContent = content;
+      
+      messageDiv.appendChild(headerDiv);
+      messageDiv.appendChild(contentDiv);
+      
+      return messageDiv;
+    }
+
+    function appendMessage(content, isUser = false, isError = false) {
+      const messageElement = createMessage(content, isUser, isError);
+      chatBox.appendChild(messageElement);
       chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      typingIndicator.style.display = 'block';
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      typingIndicator.style.display = 'none';
     }
 
     /* ─── send flow ───────────────────────────── */
@@ -33,31 +366,71 @@
       const q = questionInput.value.trim();
       if (!q) return;
 
-      append(`🧑 You: ${q}`);
+      // Disable input while processing
+      questionInput.disabled = true;
+      sendBtn.disabled = true;
+      
+      // Add user message
+      appendMessage(q, true);
       questionInput.value = '';
+      
+      // Show typing indicator
+      showTypingIndicator();
 
       try {
-        const res  = await fetch('http://localhost:8001/chat', {
-          method : 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body   : JSON.stringify({ question: q, session_id: sessionId })
+        // Determine endpoint based on mode
+        const endpoint = isDirectGPTMode ? 
+          'http://localhost:8001/chat' : 
+          'http://localhost:8001/chat';
+        
+        // Add mode hint to request for direct GPT mode
+        const requestBody = {
+          question: isDirectGPTMode ? `[DIRECT_GPT_MODE] ${q}` : q,
+          session_id: sessionId
+        };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
         });
+
         const data = await res.json();
+        
+        hideTypingIndicator();
+        
         if (!res.ok) {
-          append(`❌ Server error (${res.status}): ${data.detail ?? 'unknown'}`);
+          appendMessage(`Server error (${res.status}): ${data.detail ?? 'unknown'}`, false, true);
           return;
         }
-        append(`🤖 Bot: ${data.response}`);
+        
+        appendMessage(data.response);
+        
       } catch (e) {
-        append(`❌ Network error: ${e.message}`);
+        hideTypingIndicator();
+        appendMessage(`Network error: ${e.message}`, false, true);
+      } finally {
+        // Re-enable input
+        questionInput.disabled = false;
+        sendBtn.disabled = false;
+        questionInput.focus();
       }
     }
-    questionInput.addEventListener('keydown', e => e.key === 'Enter' && sendMessage());
+
+    /* ─── event listeners ──────────────────────── */
+    questionInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
     /* ─── history loader ──────────────────────── */
-    fetch(`http://localhost:8001/history/${sessionId}`)
-      .then(r => r.json())
-      .then(raw => {
+    async function loadHistory() {
+      try {
+        const res = await fetch(`http://localhost:8001/history/${sessionId}`);
+        const raw = await res.json();
+        
         // raw could be ① an array, or ② { history:[…] }
         const history = Array.isArray(raw) ? raw :
                         Array.isArray(raw.history) ? raw.history : [];
@@ -66,16 +439,25 @@
           // OpenAI-style {role, content}
           if (turn.role && (turn.content || turn.answer)) {
             const txt = turn.content ?? turn.answer;
-            append(`${turn.role === 'user' ? '🧑 You' : '🤖 Bot'}: ${txt}`);
+            appendMessage(txt, turn.role === 'user');
           }
           // Legacy {question, answer}
           else if (turn.question && turn.answer) {
-            append(`🧑 You: ${turn.question}`);
-            append(`🤖 Bot: ${turn.answer}`);
+            appendMessage(turn.question, true);
+            appendMessage(turn.answer);
           }
         });
-      })
-      .catch(e => append(`⚠️ Failed to load history: ${e.message}`));
+      } catch (e) {
+        appendMessage(`Failed to load history: ${e.message}`, false, true);
+      }
+    }
+
+    /* ─── initialization ──────────────────────── */
+    document.addEventListener('DOMContentLoaded', function() {
+      updateModeDisplay();
+      loadHistory();
+      questionInput.focus();
+    });
   </script>
 </body>
 </html>
