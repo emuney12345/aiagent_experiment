@@ -84,12 +84,10 @@ def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], she
     """Updates a specific row in an Excel file."""
     filepath = _get_excel_path(filename)
     if not filepath:
-        return {"error": f"File not found in the 'pdfs'directory: {filename}"}
+        return {"error": f"File not found in the 'pdfs' directory: {filename}"}
 
     try:
-        # Atomically read all sheets, modify, and write back
         xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
-
         target_sheet = sheet_name or list(xls.keys())[0]
         if target_sheet not in xls:
             return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
@@ -114,8 +112,10 @@ def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], she
 
         return {"message": f"Row {row_index} updated successfully."}
 
+    except PermissionError:
+        return {"error": f"Could not modify '{filename}' due to a permission error. Please ensure the file is not open in another program."}
     except Exception as e:
-        return {"error": f"Failed to update row: {str(e)}"}
+        return {"error": f"An unexpected error occurred while updating a row: {str(e)}"}
 
 
 def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
@@ -125,9 +125,7 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         return {"error": f"File not found in the 'pdfs' directory: {filename}"}
 
     try:
-        # Atomically read all sheets, modify, and write back
         xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
-        
         target_sheet = sheet_name or list(xls.keys())[0]
         if target_sheet not in xls:
             return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
@@ -135,16 +133,13 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         df = xls[target_sheet]
         df.fillna("", inplace=True)
 
-        # Correctly create the new row dictionary. This is the fix.
-        new_row_data = {col: "" for col in df.columns}  # Start with an empty row
+        new_row_data = {col: "" for col in df.columns}
         for key, value in new_data.items():
             if key in new_row_data:
                 new_row_data[key] = str(value)
         
-        # Use pandas.concat to append the new row.
         new_row_df = pd.DataFrame([new_row_data])
         df = pd.concat([df, new_row_df], ignore_index=True)
-
         xls[target_sheet] = df
 
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
@@ -153,8 +148,10 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
 
         return {"message": "Row added successfully."}
 
+    except PermissionError:
+        return {"error": f"Could not modify '{filename}' due to a permission error. Please ensure the file is not open in another program."}
     except Exception as e:
-        return {"error": f"Failed to add row: {str(e)}"}
+        return {"error": f"An unexpected error occurred while adding a row: {str(e)}"}
 
 
 def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = None) -> Dict[str, Any]:
@@ -164,9 +161,7 @@ def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = 
         return {"error": f"File not found in the 'pdfs' directory: {filename}"}
 
     try:
-        # Atomically read all sheets, modify, and write back
         xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
-
         target_sheet = sheet_name or list(xls.keys())[0]
         if target_sheet not in xls:
             return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
@@ -177,9 +172,7 @@ def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = 
         if row_index < 0 or row_index >= len(df):
             return {"error": f"Row index {row_index} is out of bounds."}
 
-        deleted_row_data = df.loc[row_index].to_dict()
         df = df.drop(index=row_index).reset_index(drop=True)
-        
         xls[target_sheet] = df
 
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
@@ -188,8 +181,10 @@ def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = 
 
         return {"message": f"Row {row_index} deleted successfully."}
 
+    except PermissionError:
+        return {"error": f"Could not modify '{filename}' due to a permission error. Please ensure the file is not open in another program."}
     except Exception as e:
-        return {"error": f"Failed to delete row: {str(e)}"}
+        return {"error": f"An unexpected error occurred while deleting a row: {str(e)}"}
 
 def get_excel_info(filename: str) -> Dict[str, Any]:
     """
