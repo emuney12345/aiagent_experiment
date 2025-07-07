@@ -52,7 +52,9 @@ def read_excel_data(filename: str) -> str:
 def add_new_excel_record(filename: str, data: Dict[str, Any]) -> str:
     """Use this tool to CREATE a new record or add a new row to an Excel file. The 'data' argument should be a dictionary where keys are the column names and values are the data to be added."""
     try:
-        result = add_excel_row(filename.strip(), data)
+        # Enforce string type for all data to ensure consistency
+        data_as_str = {k: str(v) for k, v in data.items()}
+        result = add_excel_row(filename.strip(), data_as_str)
         return f"✅ Successfully added new row to {filename}: {result.get('message', '')}"
     except Exception as e:
         return f"Error adding Excel row: {str(e)}"
@@ -60,7 +62,9 @@ def add_new_excel_record(filename: str, data: Dict[str, Any]) -> str:
 def update_existing_excel_record(filename: str, row_index: int, updates: Dict[str, Any]) -> str:
     """Use this tool to UPDATE or MODIFY an existing record in an Excel file. The 'updates' argument is a dictionary of the changes to make."""
     try:
-        result = update_excel_row(filename.strip(), row_index, updates)
+        # Enforce string type for all data to ensure consistency
+        updates_as_str = {k: str(v) for k, v in updates.items()}
+        result = update_excel_row(filename.strip(), row_index, updates_as_str)
         return f"✅ Successfully updated row in {filename}: {result.get('message', '')}"
     except Exception as e:
         return f"Error updating Excel row: {str(e)}"

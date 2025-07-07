@@ -96,11 +96,12 @@ def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], she
     filepath = _get_excel_path(filename)
     
     try:
-        # Read current data, defaulting to the first sheet if none is specified
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0)
-        
-        if row_index >= len(df):
-            raise IndexError(f"Row index {row_index} out of range. File has {len(df)} rows.")
+        # Read all data as strings to avoid Excel's auto-formatting issues
+        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
+        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+
+        if row_index < 0 or row_index >= len(df):
+            return {"error": f"Row index {row_index} is out of bounds."}
         
         # Update the row
         for column, value in updates.items():
@@ -132,23 +133,16 @@ def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], she
         raise Exception(error_msg)
 
 def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Add a new row to Excel file.
-    
-    Args:
-        filename: Name of the Excel file
-        new_data: Dictionary of column:value pairs for new row
-        sheet_name: Specific sheet to add to (optional)
-    
-    Returns:
-        Dict containing operation result
-    """
+    """Adds a new row to an Excel file."""
     filepath = _get_excel_path(filename)
-    
+    if not filepath:
+        return {"error": f"File not found in the 'pdfs' directory: {filename}"}
+
     try:
-        # Read current data, defaulting to the first sheet if none is specified
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0)
-        
+        # Read all data as strings to avoid Excel's auto-formatting issues
+        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
+        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+
         # Validate columns
         for column in new_data.keys():
             if column not in df.columns:
@@ -186,25 +180,18 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         raise Exception(error_msg)
 
 def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Delete a specific row from Excel file.
-    
-    Args:
-        filename: Name of the Excel file
-        row_index: Index of the row to delete (0-based)
-        sheet_name: Specific sheet to delete from (optional)
-    
-    Returns:
-        Dict containing operation result
-    """
+    """Deletes a specific row from an Excel file."""
     filepath = _get_excel_path(filename)
-    
+    if not filepath:
+        return {"error": f"File not found in the 'pdfs' directory: {filename}"}
+
     try:
-        # Read current data, defaulting to the first sheet if none is specified
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0)
-        
-        if row_index >= len(df):
-            raise IndexError(f"Row index {row_index} out of range. File has {len(df)} rows.")
+        # Read all data as strings to avoid Excel's auto-formatting issues
+        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
+        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+
+        if row_index < 0 or row_index >= len(df):
+            return {"error": f"Row index {row_index} is out of bounds."}
         
         # Store the row data for logging
         deleted_row = df.iloc[row_index].to_dict()
