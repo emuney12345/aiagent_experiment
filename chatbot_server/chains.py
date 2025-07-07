@@ -10,7 +10,7 @@ from langchain.prompts import MessagesPlaceholder
 from chatbot_server.vectorstore import get_vectorstore
 from chatbot_server.excel_tools import (
     read_excel_file, update_excel_row, add_excel_row, 
-    delete_excel_row, get_excel_info as get_excel_info_from_tool
+    delete_excel_row, delete_excel_record_by_criteria, get_excel_info as get_excel_info_from_tool
 )
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
@@ -93,6 +93,17 @@ def delete_excel_record(filename: str, row_index: int) -> str:
         return f"An unexpected error occurred while deleting a row: {str(e)}"
 
 
+def delete_excel_record_smart(filename: str, criteria: Dict[str, Any]) -> str:
+    """Use this tool to DELETE records from an Excel file by matching criteria (e.g., name, account number, etc.). This is better than delete_excel_record when you know the data values but not the row index."""
+    try:
+        result = delete_excel_record_by_criteria(filename.strip(), criteria)
+        if "error" in result:
+            return f"Error: {result['error']}"
+        return f"Success: {result['message']}"
+    except Exception as e:
+        return f"An unexpected error occurred while deleting records: {str(e)}"
+
+
 # A helper function to get the schema of an excel file to help with creating new rows
 def get_excel_info(filename: str) -> str:
     """Use this tool to get the schema of an Excel file, which can help with creating or updating records."""
@@ -127,7 +138,12 @@ tools = [
     StructuredTool.from_function(
         func=delete_excel_record,
         name="delete_excel_record",
-        description="Delete a record from an Excel file.",
+        description="Delete a record from an Excel file by row index.",
+    ),
+    StructuredTool.from_function(
+        func=delete_excel_record_smart,
+        name="delete_excel_record_smart",
+        description="Delete records from an Excel file by matching criteria (name, account number, etc.). Use this when you know the data values but not the row index.",
     )
 ]
 
@@ -145,13 +161,15 @@ system_message = SystemMessage(
         **STEP 2A: For Excel Operations**
         1.  **Identify and Confirm File**: Analyze the user's request to infer the topic (`sales` vs. `accounts`) and the corresponding file (`order_inventory.xlsx` vs. `account_info.xlsx`). You MUST state your choice and ask the user for confirmation before proceeding.
 
-        2.  **Gather and Execute**: Once the file is confirmed, your only goal is to gather the information needed and add it to the file.
+        2.  **For Deletions**: Use `delete_excel_record_smart` with criteria like {"Name": "Bob"} or {"Account Number": "11"} instead of asking for row indices.
+
+        3.  **Gather and Execute**: Once the file is confirmed, your only goal is to gather the information needed and execute the operation.
             a.  Use `get_excel_schema` to understand the required columns.
             b.  Ask the user for any details missing from their request (e.g., `Order Number`, `Part Number`).
-            c.  **MANDATORY**: Once you have all the information, you MUST call the `add_new_excel_record` tool. Do NOT just say you will do it - ACTUALLY DO IT.
+            c.  **MANDATORY**: Once you have all the information, you MUST call the appropriate tool. Do NOT just say you will do it - ACTUALLY DO IT.
             d.  **Assemble the Full Record**: You must construct a complete `data` dictionary using all the information you have gathered from the user across the conversation.
-            e.  **Call the Tool**: Call `add_new_excel_record` with the `filename` and the complete `data` dictionary.
-            f.  **NEVER claim success without calling the tool first**: Only say "successfully added" AFTER you have actually called the tool and received a success response.
+            e.  **Call the Tool**: Call the appropriate tool (`add_new_excel_record`, `delete_excel_record_smart`, etc.) with the correct parameters.
+            f.  **NEVER claim success without calling the tool first**: Only say "successfully completed" AFTER you have actually called the tool and received a success response.
 
         **STEP 2B: For Information Queries**
         1.  **Use Document Search**: Call the `find_document_information` tool with a well-crafted search query.

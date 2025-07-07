@@ -155,7 +155,7 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
 
 
 def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = None) -> Dict[str, Any]:
-    """Deletes a specific row from an Excel file."""
+    """Deletes a specific row from an Excel file by row index."""
     filepath = _get_excel_path(filename)
     if not filepath:
         return {"error": f"File not found in the 'pdfs' directory: {filename}"}
@@ -185,6 +185,64 @@ def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = 
         return {"error": f"Could not modify '{filename}' due to a permission error. Please ensure the file is not open in another program."}
     except Exception as e:
         return {"error": f"An unexpected error occurred while deleting a row: {str(e)}"}
+
+
+def delete_excel_record_by_criteria(filename: str, criteria: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
+    """Deletes records from an Excel file based on matching criteria (e.g., name, account number, etc.)."""
+    filepath = _get_excel_path(filename)
+    if not filepath:
+        return {"error": f"File not found in the 'pdfs' directory: {filename}"}
+
+    try:
+        xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
+        target_sheet = sheet_name or list(xls.keys())[0]
+        if target_sheet not in xls:
+            return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
+
+        df = xls[target_sheet]
+        df.fillna("", inplace=True)
+
+        # Find matching rows based on criteria
+        mask = pd.Series([True] * len(df))
+        matched_info = []
+        
+        for column, value in criteria.items():
+            if column in df.columns:
+                # Convert both to strings for comparison and handle case-insensitive matching
+                column_mask = df[column].astype(str).str.lower() == str(value).lower()
+                mask = mask & column_mask
+            else:
+                return {"error": f"Column '{column}' not found in {filename}."}
+        
+        matching_rows = df[mask]
+        
+        if len(matching_rows) == 0:
+            return {"error": f"No records found matching the criteria: {criteria}"}
+        
+        # Store info about what we're deleting
+        for idx, row in matching_rows.iterrows():
+            matched_info.append({
+                "row_index": idx,
+                "data": row.to_dict()
+            })
+        
+        # Delete the matching rows
+        df = df[~mask].reset_index(drop=True)
+        xls[target_sheet] = df
+
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            for s_name, s_df in xls.items():
+                s_df.to_excel(writer, sheet_name=s_name, index=False)
+
+        return {
+            "message": f"Successfully deleted {len(matching_rows)} record(s) matching criteria: {criteria}",
+            "deleted_records": matched_info
+        }
+
+    except PermissionError:
+        return {"error": f"Could not modify '{filename}' due to a permission error. Please ensure the file is not open in another program."}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred while deleting records: {str(e)}"}
 
 def get_excel_info(filename: str) -> Dict[str, Any]:
     """
