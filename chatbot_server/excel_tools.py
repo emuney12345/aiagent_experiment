@@ -135,9 +135,13 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         df = xls[target_sheet]
         df.fillna("", inplace=True)
 
-        new_row_data = {col: str(new_data.get(col, "")) for col in df.columns}
+        # Correctly create the new row dictionary. This is the fix.
+        new_row_data = {col: "" for col in df.columns}  # Start with an empty row
+        for key, value in new_data.items():
+            if key in new_row_data:
+                new_row_data[key] = str(value)
         
-        # Use pandas.concat instead of df.loc to append the new row
+        # Use pandas.concat to append the new row.
         new_row_df = pd.DataFrame([new_row_data])
         df = pd.concat([df, new_row_df], ignore_index=True)
 

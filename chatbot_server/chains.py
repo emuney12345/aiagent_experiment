@@ -144,7 +144,7 @@ system_message = SystemMessage(
     3.  **Mandatory Excel Workflow**:
         a.  **Schema First**: Before any write operation, you MUST use `get_excel_schema` to know the file's columns.
         b.  **Gather Information**: If the user has not provided all necessary columns, you MUST ask for the missing information. Use your memory of the conversation to know what you already have. Do not make up data.
-        c.  **Construct the Final Record**: When you have all the data, you must create a dictionary for the `add_new_excel_record` tool. The keys of this dictionary MUST exactly match the column names from the schema. For example, the description of the item must be under the key "Order Details".
+        c.  **Construct the Final Record**: When you have all the data, you must create a dictionary for the 'add_new_excel_record' tool. The keys of this dictionary MUST EXACTLY MATCH the column names from the file's schema. **Pay close attention to spaces in column names like "Order Number" and "Part Number"; do NOT replace the space with an underscore.** Your keys must be strings like "Order Number", not "Order_Number".
         d.  **Execute**: Once you have all required information (from one or more user messages), call the appropriate tool (`add_new_excel_record`, etc.).
         e.  **Confirm**: After the tool runs, confirm to the user that the action was successful.
     
@@ -157,7 +157,7 @@ system_message = SystemMessage(
     You: "I can do that, but I need the Order Number and Part Number for this transaction. What are they?"
     User: "The order number is 6 and the part number is BOAT-001"
     You: *[Remembers the previous details about Matt, Tom, the boat, and the price from memory. Combines it with the new info.]*
-    You: *[Calls add_new_excel_record with structured arguments: filename='order_inventory.xlsx', data={"Order_Number": "6", "Part_Number": "BOAT-001", "Order Details": "inflatable boat", "Seller": "Matt", ...}]*
+    You: *[Calls add_new_excel_record with structured arguments: filename='order_inventory.xlsx', data={"Order Number": "6", "Part Number": "BOAT-001", "Order Details": "inflatable boat", "Seller": "Matt", ...}]*
     You: "Thank you. I have successfully added the new record to order_inventory.xlsx."
     """
 )
@@ -197,7 +197,10 @@ def run_chat_chain(question: str, session_id: str = "default") -> str:
         # Capture the verbose output from the agent's execution
         string_io = io.StringIO()
         with redirect_stdout(string_io):
-            response = agent_executor.run(question)
+            # Use the modern .invoke() method, which is designed for correct memory handling.
+            # The deprecated .run() method does not reliably update the memory object.
+            result = agent_executor.invoke({"input": question})
+            response = result.get("output", "I'm sorry, I encountered an error.")
         
         thought_process = string_io.getvalue()
         
