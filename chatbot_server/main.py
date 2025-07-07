@@ -38,9 +38,9 @@ async def chat(request: ChatRequest):
         # Use the enhanced RAG + Excel chain
         response = run_chat_chain(request.question, session_id=request.session_id)
 
-        # Fallback to direct GPT if response is unhelpful
-        if is_unhelpful(response):
-            response = query_openai_direct(request.question)
+    # Fallback to direct GPT if response is unhelpful
+    if is_unhelpful(response):
+        response = query_openai_direct(request.question)
 
     store_chat(request.session_id, request.question, response)
     return {"response": response}

@@ -81,56 +81,42 @@ def read_excel_file(filename: str, sheet_name: Optional[str] = None) -> Dict[str
         raise Exception(error_msg)
 
 def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Update a specific row in Excel file.
-    
-    Args:
-        filename: Name of the Excel file
-        row_index: Index of the row to update (0-based)
-        updates: Dictionary of column:value pairs to update
-        sheet_name: Specific sheet to update (optional)
-    
-    Returns:
-        Dict containing operation result
-    """
+    """Updates a specific row in an Excel file."""
     filepath = _get_excel_path(filename)
-    
+    if not filepath:
+        return {"error": f"File not found in the 'pdfs'directory: {filename}"}
+
     try:
-        # Read all data as strings to avoid Excel's auto-formatting issues
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
-        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+        # Atomically read all sheets, modify, and write back
+        xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
+
+        target_sheet = sheet_name or list(xls.keys())[0]
+        if target_sheet not in xls:
+            return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
+
+        df = xls[target_sheet]
+        df.fillna("", inplace=True)
 
         if row_index < 0 or row_index >= len(df):
             return {"error": f"Row index {row_index} is out of bounds."}
+
+        for col, value in updates.items():
+            if col in df.columns:
+                df.loc[row_index, col] = str(value)
+            else:
+                return {"error": f"Column '{col}' not found in {filename}."}
         
-        # Update the row
-        for column, value in updates.items():
-            if column not in df.columns:
-                raise ValueError(f"Column '{column}' not found in Excel file")
-            df.at[row_index, column] = value
-        
-        # Save back to Excel
-        if sheet_name:
-            # If specific sheet, need to preserve other sheets
-            with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-        else:
-            df.to_excel(filepath, index=False)
-        
-        _log_operation("UPDATE", filename, f"Updated row {row_index} with {updates}")
-        
-        return {
-            "success": True,
-            "filename": filename,
-            "row_index": row_index,
-            "updates": updates,
-            "message": f"Successfully updated row {row_index}"
-        }
-    
+        xls[target_sheet] = df
+
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            for s_name, s_df in xls.items():
+                s_df.to_excel(writer, sheet_name=s_name, index=False)
+
+        return {"message": f"Row {row_index} updated successfully."}
+
     except Exception as e:
-        error_msg = f"Error updating Excel row: {str(e)}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
+        return {"error": f"Failed to update row: {str(e)}"}
+
 
 def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
     """Adds a new row to an Excel file."""
@@ -139,45 +125,33 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         return {"error": f"File not found in the 'pdfs' directory: {filename}"}
 
     try:
-        # Read all data as strings to avoid Excel's auto-formatting issues
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
-        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+        # Atomically read all sheets, modify, and write back
+        xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
+        
+        target_sheet = sheet_name or list(xls.keys())[0]
+        if target_sheet not in xls:
+            return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
+            
+        df = xls[target_sheet]
+        df.fillna("", inplace=True)
 
-        # Validate columns
-        for column in new_data.keys():
-            if column not in df.columns:
-                raise ValueError(f"Column '{column}' not found in Excel file")
+        new_row_data = {col: str(new_data.get(col, "")) for col in df.columns}
         
-        # Create new row with all columns (fill missing with empty values)
-        new_row = {}
-        for col in df.columns:
-            new_row[col] = new_data.get(col, "")
-        
-        # Add the new row
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        
-        # Save back to Excel
-        if sheet_name:
-            # If specific sheet, need to preserve other sheets
-            with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-        else:
-            df.to_excel(filepath, index=False)
-        
-        _log_operation("ADD", filename, f"Added new row with data: {new_data}")
-        
-        return {
-            "success": True,
-            "filename": filename,
-            "new_row_index": len(df) - 1,
-            "new_data": new_data,
-            "message": f"Successfully added new row to {filename}"
-        }
-    
+        # Use pandas.concat instead of df.loc to append the new row
+        new_row_df = pd.DataFrame([new_row_data])
+        df = pd.concat([df, new_row_df], ignore_index=True)
+
+        xls[target_sheet] = df
+
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            for s_name, s_df in xls.items():
+                s_df.to_excel(writer, sheet_name=s_name, index=False)
+
+        return {"message": "Row added successfully."}
+
     except Exception as e:
-        error_msg = f"Error adding Excel row: {str(e)}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
+        return {"error": f"Failed to add row: {str(e)}"}
+
 
 def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = None) -> Dict[str, Any]:
     """Deletes a specific row from an Excel file."""
@@ -186,41 +160,32 @@ def delete_excel_row(filename: str, row_index: int, sheet_name: Optional[str] = 
         return {"error": f"File not found in the 'pdfs' directory: {filename}"}
 
     try:
-        # Read all data as strings to avoid Excel's auto-formatting issues
-        df = pd.read_excel(filepath, sheet_name=sheet_name or 0, dtype=str)
-        df.fillna("", inplace=True)  # Replace NaN with empty strings for consistency
+        # Atomically read all sheets, modify, and write back
+        xls = pd.read_excel(filepath, sheet_name=None, dtype=str)
+
+        target_sheet = sheet_name or list(xls.keys())[0]
+        if target_sheet not in xls:
+            return {"error": f"Sheet '{target_sheet}' not found in '{filename}'."}
+
+        df = xls[target_sheet]
+        df.fillna("", inplace=True)
 
         if row_index < 0 or row_index >= len(df):
             return {"error": f"Row index {row_index} is out of bounds."}
+
+        deleted_row_data = df.loc[row_index].to_dict()
+        df = df.drop(index=row_index).reset_index(drop=True)
         
-        # Store the row data for logging
-        deleted_row = df.iloc[row_index].to_dict()
-        
-        # Delete the row
-        df = df.drop(df.index[row_index]).reset_index(drop=True)
-        
-        # Save back to Excel
-        if sheet_name:
-            # If specific sheet, need to preserve other sheets
-            with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-        else:
-            df.to_excel(filepath, index=False)
-        
-        _log_operation("DELETE", filename, f"Deleted row {row_index}: {deleted_row}")
-        
-        return {
-            "success": True,
-            "filename": filename,
-            "deleted_row_index": row_index,
-            "deleted_data": deleted_row,
-            "message": f"Successfully deleted row {row_index}"
-        }
-    
+        xls[target_sheet] = df
+
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            for s_name, s_df in xls.items():
+                s_df.to_excel(writer, sheet_name=s_name, index=False)
+
+        return {"message": f"Row {row_index} deleted successfully."}
+
     except Exception as e:
-        error_msg = f"Error deleting Excel row: {str(e)}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
+        return {"error": f"Failed to delete row: {str(e)}"}
 
 def get_excel_info(filename: str) -> Dict[str, Any]:
     """
