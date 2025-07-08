@@ -172,6 +172,7 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      position: relative; /* For status message positioning */
     }
 
     #question {
@@ -188,7 +189,12 @@
       border-color: #667eea;
     }
 
-    #send-btn {
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    #send-btn, #upload-btn {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       border: none;
@@ -200,12 +206,21 @@
       transition: transform 0.2s ease;
     }
 
-    #send-btn:hover {
+    #send-btn:hover, #upload-btn:hover {
       transform: translateY(-2px);
     }
 
-    #send-btn:active {
+    #send-btn:active, #upload-btn:active {
       transform: translateY(0);
+    }
+
+    #upload-status {
+      position: absolute;
+      bottom: 100%;
+      left: 20px;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
     }
 
     .loading {
@@ -300,8 +315,18 @@
     </div>
     
     <div class="input-container">
-      <input id="question" type="text" placeholder="Ask a question or request Excel operations..." />
-      <button id="send-btn" onclick="sendMessage()">Send</button>
+      <input
+        type="text"
+        id="question"
+        placeholder="Ask me anything..."
+        autocomplete="off"
+      />
+      <input type="file" id="file-input" style="display: none;" accept=".pdf,.xlsx,.csv,.docx" />
+      <div class="button-group">
+        <button id="upload-btn">Upload</button>
+        <button id="send-btn">Send</button>
+      </div>
+      <span id="upload-status"></span>
     </div>
   </div>
 
@@ -314,6 +339,11 @@
     const typingIndicator = document.getElementById('typing-indicator');
     const sendBtn = document.getElementById('send-btn');
     const sessionId = new URLSearchParams(location.search).get('session') || 'default';
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileInput = document.getElementById('file-input');
+    const uploadStatus = document.getElementById('upload-status');
+
+    const API_URL = "http://localhost:8001";
 
     /* ─── mode management ─────────────────────── */
     let isDirectGPTMode = false;
@@ -380,8 +410,8 @@
       try {
         // Determine endpoint based on mode
         const endpoint = isDirectGPTMode ? 
-          'http://localhost:8001/chat' : 
-          'http://localhost:8001/chat';
+          `${API_URL}/chat` : 
+          `${API_URL}/chat`;
         
         // Add mode hint to request for direct GPT mode
         const requestBody = {
@@ -425,10 +455,21 @@
       }
     });
 
+    uploadBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        uploadFile(file);
+      }
+    });
+
     /* ─── history loader ──────────────────────── */
     async function loadHistory() {
       try {
-        const res = await fetch(`http://localhost:8001/history/${sessionId}`);
+        const res = await fetch(`${API_URL}/history/${sessionId}`);
         const raw = await res.json();
         
         // raw could be ① an array, or ② { history:[…] }
@@ -449,6 +490,47 @@
         });
       } catch (e) {
         appendMessage(`Failed to load history: ${e.message}`, false, true);
+      }
+    }
+
+    async function uploadFile(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      uploadStatus.textContent = `Uploading ${file.name}...`;
+      uploadStatus.style.color = '#666';
+
+      try {
+        const response = await fetch(`${API_URL}/upload`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || "File upload failed");
+        }
+
+        const result = await response.json();
+        uploadStatus.textContent = `Successfully uploaded ${result.filename}`;
+        uploadStatus.style.color = 'green';
+        
+        appendMessage(
+          `File "${result.filename}" uploaded successfully. It is now being processed for context.`
+        );
+
+      } catch (error) {
+        console.error("Upload error:", error);
+        uploadStatus.textContent = `Error: ${error.message}`;
+        uploadStatus.style.color = 'red';
+        appendMessage("System", `Error uploading file: ${error.message}`, "error-message");
+      } finally {
+          // Clear the input so the user can upload the same file again
+          fileInput.value = ''; 
+          // Hide the status message after a few seconds
+          setTimeout(() => {
+              uploadStatus.textContent = '';
+          }, 5000);
       }
     }
 

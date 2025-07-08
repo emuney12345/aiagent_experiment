@@ -1,11 +1,12 @@
 # chatbot-server/main.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from chatbot_server.chains import run_chat_chain
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg2
 import os
+import shutil
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -16,11 +17,14 @@ app = FastAPI()
 # === CORS middleware ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:8001", "http://localhost:8001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PDFS_DIR = "pdfs"
+os.makedirs(PDFS_DIR, exist_ok=True)
 
 # === Request model ===
 class ChatRequest(BaseModel):
@@ -49,6 +53,26 @@ async def chat(request: ChatRequest):
 async def get_history(session_id: str):
     history = fetch_history(session_id)
     return {"history": history}
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    # Sanitize filename to prevent security issues like directory traversal
+    safe_filename = os.path.basename(file.filename)
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    file_path = os.path.join(PDFS_DIR, safe_filename)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"filename": safe_filename, "detail": "File uploaded successfully"}
+    except Exception as e:
+        # Log the exception for debugging
+        print(f"Error saving file: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not save file: {e}")
+    finally:
+        file.file.close()
 
 # === Config ===
 MAX_HISTORY_PROMPTS = 20  # each prompt = 1 user + 1 bot entry
