@@ -1,0 +1,72 @@
+# Chatbot Architecture: How It Works
+
+This document outlines the key technologies and files that power the AI Business Assistant chatbot, enabling its core functionalities like intelligent document search and Excel data manipulation.
+
+---
+
+### 1. Core Backend & API (`chatbot_server/main.py`)
+
+The chatbot's backend is a Python application built with the **FastAPI** framework, which provides a high-performance web server for handling API requests.
+
+-   **Technology**: FastAPI, Uvicorn
+-   **Key Components & Functions**:
+    -   `app = FastAPI()`: Initializes the main application instance.
+    -   `app.add_middleware(CORSMiddleware, ...)`: Configures Cross-Origin Resource Sharing (CORS) to allow the frontend (`127.0.0.1:5500`) to communicate with the backend API.
+    -   `@app.post("/chat")`: The primary API endpoint that receives user messages. It serves as the main entry point for all chat interactions.
+        -   **Mode Switching**: It checks if a message is prefixed with `[DIRECT_GPT_MODE]` to decide whether to use the advanced agent or a direct call to the OpenAI API.
+        -   **Error Fallback**: Includes an `is_unhelpful()` check to provide a direct GPT-3.5 response if the advanced agent fails or returns a generic "I can't help" message.
+    -   `store_chat()` & `fetch_history()`: Functions that connect to the PostgreSQL database to save every user/assistant interaction and retrieve the chat history for a given session.
+
+---
+
+### 2. AI Agent & Reasoning Core (`chatbot_server/chains.py`)
+
+The "brain" of the chatbot is a sophisticated AI agent built using the **LangChain** framework. This agent intelligently determines the user's intent and chooses the appropriate tool for the job.
+
+-   **Technology**: LangChain, OpenAI GPT-4 Turbo
+-   **Key Components & Functions**:
+    -   `system_message = SystemMessage(...)`: This is the **most critical component**. The `content` of this message is a detailed prompt that defines the agent's personality, its step-by-step reasoning workflow, and its rules for choosing between different tools (e.g., Excel operations vs. document queries). It includes examples to guide the AI's behavior.
+    -   `tools = [...]`: A list that defines all the capabilities available to the agent. Each tool is an instance of `langchain.agents.Tool` or `langchain.tools.StructuredTool`, mapping a natural language description to a specific Python function (e.g., `delete_excel_record_smart`).
+    -   `run_chat_chain(question: str, session_id: str)`: The main function called by the API. It orchestrates the entire process:
+        1.  Retrieves or creates a `ConversationBufferMemory` object for the user's session to maintain context.
+        2.  Initializes an `AgentExecutor`, which is the LangChain runtime that executes the agent's logic.
+        3.  Invokes the agent with the user's question and captures the final response to send back to the user.
+
+---
+
+### 3. RAG - Document Search & Retrieval
+
+When a user asks an informational question, the agent uses a Retrieval-Augmented Generation (RAG) pipeline to find answers from the provided documents.
+
+-   **`chatbot_server/ingest_docs.py`**: A one-time script for indexing documents.
+    -   **`EXTENSION_MAP`: ** A dictionary that maps file extensions (`.pdf`, `.xlsx`, etc.) to the appropriate `Unstructured...Loader` class from LangChain, enabling it to parse various document formats.
+    -   **`load_and_split(file_path)`**: Loads a single document, uses a `RecursiveCharacterTextSplitter` to break it into smaller, manageable chunks, and adds the file path as metadata to each chunk.
+-   **`chatbot_server/vectorstore.py`**:
+    -   **`get_vectorstore()`**: This function is central to the RAG process. It creates and returns a `PGVector` instance, which connects to the PostgreSQL database using the `DATABASE_URL` and specifies the collection name for the vectors. It uses `OpenAIEmbeddings` to convert text chunks into vector representations for semantic search.
+-   **Indexing Strategy**:
+    -   The system uses **IVFFlat indexing**, which is the default for `pgvector` when used with LangChain's `PGVector.add_documents` method. This index works by partitioning the vector space into lists and searching only a subset of these lists at query time, making it efficient for large datasets.
+
+---
+
+### 4. Excel File Manipulation (`chatbot_server/excel_tools.py`)
+
+For requests involving structured data, the agent uses a set of custom tools designed to interact with Excel files.
+
+-   **Technology**: Pandas, Openpyxl
+-   **Key Functions**:
+    -   `_get_excel_path(filename)`: A crucial security and validation helper that ensures only allowed Excel files within the designated directory can be accessed.
+    -   `add_excel_row(...)`, `update_excel_row(...)`: Standard functions for adding and modifying data. They use `pandas` to read the Excel file into a DataFrame, perform the manipulation, and write the result back, ensuring atomic and safe file operations.
+    -   `delete_excel_record_by_criteria(...)`: The "smart" deletion tool. Instead of requiring a row index, it accepts a dictionary of criteria (e.g., `{"Name": "Bob"}`). It then uses pandas boolean masking to find and delete all rows that match the criteria, providing a more intuitive and user-friendly experience.
+
+---
+
+### 5. Frontend User Interface (`chat.html`)
+
+The user interacts with the chatbot through a simple, clean web interface.
+
+-   **Technology**: HTML, CSS, JavaScript
+-   **Key Components & Functions**:
+    -   **`sendMessage(event)`**: The core JavaScript function that is triggered when the user sends a message. It prevents the default form submission, retrieves the user's text, and initiates the API call.
+    -   **`fetch('/chat', ...)`**: The function makes a `POST` request to the backend API, sending the user's question and the `session_id` in the request body.
+    -   **Mode Toggle Logic**: The JavaScript includes an event listener for the toggle switch. When switched, it prefixes the message with `[DIRECT_GPT_MODE]`, signaling the backend to bypass the advanced agent.
+    -   **`displayMessage(text, sender)`**: A helper function responsible for creating new `div` elements for chat messages and appending them to the `chat-box` with the appropriate CSS classes (`user-message` or `bot-message`).
