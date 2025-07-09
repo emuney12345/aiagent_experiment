@@ -321,7 +321,7 @@
         placeholder="Ask me anything..."
         autocomplete="off"
       />
-      <input type="file" id="file-input" style="display: none;" accept=".pdf,.xlsx,.csv,.docx" />
+      <input type="file" id="file-input" style="display: none;" accept=".pdf,.xlsx,.csv,.docx" multiple />
       <div class="button-group">
         <button id="upload-btn">Upload</button>
         <button id="send-btn">Send</button>
@@ -460,9 +460,9 @@
     });
 
     fileInput.addEventListener("change", (event) => {
-      const file = event.target.files[0];
-      if (file) {
-        uploadFile(file);
+      const files = event.target.files;
+      if (files.length > 0) {
+        uploadFiles(Array.from(files));
       }
     });
 
@@ -493,11 +493,14 @@
       }
     }
 
-    async function uploadFile(file) {
+    async function uploadFiles(files) {
       const formData = new FormData();
-      formData.append("file", file);
+      files.forEach(file => {
+        formData.append("files", file);
+      });
 
-      uploadStatus.textContent = `Uploading ${file.name}...`;
+      const fileNames = files.map(f => f.name).join(', ');
+      uploadStatus.textContent = `Uploading ${files.length} file(s): ${fileNames}...`;
       uploadStatus.style.color = '#666';
 
       try {
@@ -506,40 +509,57 @@
           body: formData,
         });
 
+        const result = await response.json();
+
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || "File upload failed");
+          // Use detail from result if available, otherwise provide a generic message
+          throw new Error(result.detail || `File upload failed with status: ${response.status}`);
         }
 
-        const result = await response.json();
-        uploadStatus.textContent = `Successfully uploaded ${result.filename}`;
-        uploadStatus.style.color = 'green';
+        const successes = result.results.filter(r => r.detail);
+        const errors = result.results.filter(r => r.error);
+
+        let statusMessage = '';
+        let finalBotMessage = '';
+
+        if (successes.length > 0) {
+            const successfulFiles = successes.map(s => `"${s.filename}"`).join(', ');
+            statusMessage = `${successes.length} file(s) uploaded successfully.`;
+            finalBotMessage = `File(s) ${successfulFiles} uploaded successfully. They are now being processed for context.`;
+            uploadStatus.style.color = 'green';
+        }
+
+        if (errors.length > 0) {
+            const errorFiles = errors.map(e => `"${e.filename}"`).join(', ');
+            statusMessage = `${statusMessage} ${errors.length} file(s) failed: ${errorFiles}.`;
+            const errorDetails = errors.map(e => `${e.filename}: ${e.error}`).join('\n');
+            appendMessage(`Error uploading file(s):\n${errorDetails}`, false, true);
+            // If there were successes, the color can be orange to indicate partial success
+            uploadStatus.style.color = successes.length > 0 ? 'orange' : 'red';
+        }
         
-        appendMessage(
-          `File "${result.filename}" uploaded successfully. It is now being processed for context.`
-        );
+        uploadStatus.textContent = statusMessage.trim();
+        if (finalBotMessage) {
+            appendMessage(finalBotMessage);
+        }
 
       } catch (error) {
         console.error("Upload error:", error);
         uploadStatus.textContent = `Error: ${error.message}`;
         uploadStatus.style.color = 'red';
-        appendMessage("System", `Error uploading file: ${error.message}`, "error-message");
+        appendMessage(`System error during upload: ${error.message}`, false, true);
       } finally {
           // Clear the input so the user can upload the same file again
           fileInput.value = ''; 
           // Hide the status message after a few seconds
-          setTimeout(() => {
-              uploadStatus.textContent = '';
-          }, 5000);
+          setTimeout(() => { uploadStatus.textContent = '' }, 8000);
       }
     }
 
-    /* ─── initialization ──────────────────────── */
-    document.addEventListener('DOMContentLoaded', function() {
-      updateModeDisplay();
-      loadHistory();
-      questionInput.focus();
-    });
+    // Initial load
+    updateModeDisplay();
+    loadHistory();
+    questionInput.focus();
   </script>
 </body>
 </html>

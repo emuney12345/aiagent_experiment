@@ -9,6 +9,7 @@ import os
 import shutil
 from dotenv import load_dotenv
 from openai import OpenAI
+from typing import List
 
 load_dotenv()
 
@@ -55,24 +56,37 @@ async def get_history(session_id: str):
     return {"history": history}
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    # Sanitize filename to prevent security issues like directory traversal
-    safe_filename = os.path.basename(file.filename)
-    if not safe_filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
+async def upload_files(files: List[UploadFile] = File(...)):
+    results = []
+    success_count = 0
+    for file in files:
+        safe_filename = os.path.basename(file.filename)
+        file_path = os.path.join(PDFS_DIR, safe_filename)
 
-    file_path = os.path.join(PDFS_DIR, safe_filename)
+        try:
+            if not safe_filename:
+                # This will be caught by the exception handler below
+                raise ValueError("Invalid filename provided")
 
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        return {"filename": safe_filename, "detail": "File uploaded successfully"}
-    except Exception as e:
-        # Log the exception for debugging
-        print(f"Error saving file: {e}")
-        raise HTTPException(status_code=500, detail=f"Could not save file: {e}")
-    finally:
-        file.file.close()
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            results.append({"filename": safe_filename, "detail": "File uploaded successfully"})
+            success_count += 1
+        except Exception as e:
+            error_message = f"Could not save file: {e}"
+            print(f"Error saving file '{file.filename}': {error_message}")
+            results.append({"filename": file.filename or "unknown", "error": error_message})
+        finally:
+            if file:
+                file.file.close()
+    
+    if success_count == 0 and results:
+        # If no files succeeded, return the first error as the detail in a 500 response
+        raise HTTPException(status_code=500, detail=results[0].get("error", "File upload failed"))
+        
+    return {"results": results}
+
 
 # === Config ===
 MAX_HISTORY_PROMPTS = 20  # each prompt = 1 user + 1 bot entry
@@ -128,7 +142,7 @@ def fetch_history(session_id: str):
                 SELECT role, answer
                 FROM chat_history
                 WHERE session_id = %s
-                ORDER BY created_at ASC
+                ORDER BY created_at ASC, id ASC
                 LIMIT %s
                 """,
                 (session_id, MAX_HISTORY_PROMPTS * 2)
