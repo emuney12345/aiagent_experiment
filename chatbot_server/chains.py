@@ -7,10 +7,13 @@ from langchain.tools import StructuredTool
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
 from langchain.schema import SystemMessage
 from langchain.prompts import MessagesPlaceholder
-from chatbot_server.vectorstore import get_vectorstore
+from chatbot_server.vectorstore import get_vectorstore, get_document_sources
 from chatbot_server.excel_tools import (
     read_excel_file, update_excel_row, add_excel_row, 
     delete_excel_row, delete_excel_record_by_criteria, get_excel_info as get_excel_info_from_tool
+)
+from chatbot_server.text_tools import (
+    read_text_file, write_to_text_file, append_to_text_file, replace_in_text_file
 )
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
@@ -19,6 +22,7 @@ from typing import Dict, Any
 from contextlib import redirect_stdout
 import io
 import logging
+from pathlib import Path
 
 # === Logging Configuration ===
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +40,36 @@ session_memory = {}  # Dictionary to hold memory for each session_id
 
 def rag_search_tool(query: str) -> str:
     """Use this to find answers and information from existing documents (like the US Constitution)."""
+    
+    # Check if this is a document capability query
+    capability_keywords = ["document filenames", "file types available", "brief content summary", "categories and topics covered"]
+    is_capability_query = any(keyword in query.lower() for keyword in capability_keywords)
+    
+    if is_capability_query:
+        # Get all document sources first
+        try:
+            sources = get_document_sources()
+            if not sources:
+                return "No documents found in the vector store."
+            
+            # Sample content from each document source
+            vectorstore = get_vectorstore()
+            document_summaries = []
+            
+            for source in sources:
+                # Get a sample of content from this specific document
+                docs = vectorstore.similarity_search("", k=20, filter={"source": f"/app/pdfs/{source}"})
+                if docs:
+                    # Get a brief sample of content from this document
+                    content_sample = docs[0].page_content[:200] + "..." if len(docs[0].page_content) > 200 else docs[0].page_content
+                    document_summaries.append(f"**{source}**: {content_sample}")
+            
+            return f"Available documents ({len(sources)} total):\n\n" + "\n\n".join(document_summaries)
+            
+        except Exception as e:
+            return f"Error retrieving document sources: {str(e)}"
+    
+    # Regular RAG search for specific content queries
     vectorstore = get_vectorstore()
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
     prompt = PromptTemplate.from_template(
@@ -144,6 +178,26 @@ tools = [
         func=delete_excel_record_smart,
         name="delete_excel_record_smart",
         description="Delete records from an Excel file by matching criteria (name, account number, etc.). Use this when you know the data values but not the row index.",
+    ),
+    StructuredTool.from_function(
+        func=read_text_file,
+        name="read_text_file",
+        description="Read the entire content of a text file.",
+    ),
+    StructuredTool.from_function(
+        func=write_to_text_file,
+        name="write_to_text_file",
+        description="Write content to a text file, overwriting any existing content.",
+    ),
+    StructuredTool.from_function(
+        func=append_to_text_file,
+        name="append_to_text_file",
+        description="Append content to the end of a text file.",
+    ),
+    StructuredTool.from_function(
+        func=replace_in_text_file,
+        name="replace_in_text_file",
+        description="Replace all occurrences of a specific string in a text file.",
     )
 ]
 
@@ -153,49 +207,68 @@ system_message = SystemMessage(
     content="""You are a powerful AI business assistant. Your goal is to help the user manage their business by using the tools available to you.
 
         **Core Reasoning Workflow:**
-        
+
         **STEP 1: Determine Request Type**
-        - **Excel Operations**: User wants to add, update, delete, or modify data (keywords: "add", "create", "update", "delete", "sold by", "bought", "order")
-        - **Information Queries**: User asks questions about existing information (keywords: "what", "who", "how", "summarize", "qualified for", "tell me about")
-        
-        **STEP 2A: For Excel Operations**
-        1.  **Identify and Confirm File**: Analyze the user's request to infer the topic (`sales` vs. `accounts`) and the corresponding file (`order_inventory.xlsx` vs. `account_info.xlsx`). You MUST state your choice and ask the user for confirmation before proceeding.
+        - **Document Capability Queries** (RAG mode only): User asks about what they can inquire about, available topics, or document summaries (keywords: "what can I ask", "what topics", "summarize", "what do you know about", "what's available", "what can you do", "capabilities", "what can you help", "assist with", "what information", "what data", "what files", "what documents"). This only applies when NOT in Direct GPT mode.
+        - **File Operation**: The user wants to add, create, update, delete, read, or modify a file. This includes keywords like "add," "create," "update," "delete," "read," "write," "append," "replace," as well as file extensions like `.xlsx` or `.txt`.
+        - **Information Query**: The user is asking a question about existing information. This includes keywords like "what," "who," "how," "summarize," "qualified for," "tell me about."
 
-        2.  **For Deletions**: Use `delete_excel_record_smart` with criteria like {"Name": "Bob"} or {"Account Number": "11"} instead of asking for row indices.
+        **STEP 2: For Document Capability Queries (RAG Mode Only)**
+        1.  **Check Mode**: Only proceed if the user is in RAG mode (request does NOT contain "[DIRECT_GPT_MODE]").
+        2.  **Progressive Document Discovery**: Perform multiple broad searches to discover all available content:
+            - First: Use `find_document_information` with "document filenames and file types available"
+            - Then: Use `find_document_information` with "brief content summary of available documents"
+            - Finally: Use `find_document_information` with "categories and topics covered in documents"
+        3.  **Analyze and Categorize**: Automatically group the search results by content type (resumes, recipes, legal documents, business data, etc.) based on what was discovered.
+        4.  **Provide Comprehensive Response**: Summarize all discovered document categories and types, combining both document-specific capabilities AND general information query capabilities.
 
-        3.  **Gather and Execute**: Once the file is confirmed, your only goal is to gather the information needed and execute the operation.
-            a.  Use `get_excel_schema` to understand the required columns.
-            b.  Ask the user for any details missing from their request (e.g., `Order Number`, `Part Number`).
-            c.  **MANDATORY**: Once you have all the information, you MUST call the appropriate tool. Do NOT just say you will do it - ACTUALLY DO IT.
-            d.  **Assemble the Full Record**: You must construct a complete `data` dictionary using all the information you have gathered from the user across the conversation.
-            e.  **Call the Tool**: Call the appropriate tool (`add_new_excel_record`, `delete_excel_record_smart`, etc.) with the correct parameters.
-            f.  **NEVER claim success without calling the tool first**: Only say "successfully completed" AFTER you have actually called the tool and received a success response.
+        **STEP 3: For File Operations**
+        1.  **Identify and Confirm File**: First, analyze the user's request to infer the file they want to work on (e.g., `order_inventory.xlsx`, `account_info.xlsx`, `cheeseburger_recipe.txt`). You MUST state your proposed file choice and ask the user for confirmation before proceeding.
+        2.  **Determine File Type and Execute**: Once the file is confirmed, check its extension and follow the appropriate workflow.
+            - **If `.xlsx` (Excel file):** Follow the "Excel Operations Workflow."
+            - **If `.txt` (Text file):** Follow the "Text File Operations Workflow."
 
-        **STEP 2B: For Information Queries**
+        **Excel Operations Workflow**
+        1.  **For Deletions**: Use `delete_excel_record_smart` with criteria like `{"Name": "Bob"}` instead of asking for row indices.
+        2.  **Gather Information**: Use `get_excel_schema` to see what columns are needed. Ask the user for any details missing from their request (e.g., `Order Number`, `Part Number`).
+        3.  **Execute**: Once you have all information, call the appropriate tool (`add_new_excel_record`, `update_existing_excel_record`, `delete_excel_record_smart`).
+        4.  **MANDATORY**: You MUST call the tool. Do NOT just say you will do it. Only confirm success AFTER the tool has been called and returned a success message.
+
+        **Text File Operations Workflow**
+        1.  **Read and Analyze Format**: First, read the existing file to understand its current format and structure.
+        2.  **Identify Action**: Determine if the user wants to read, write, append, or replace.
+        3.  **Ask Formatting Questions**: Before making changes, ask the user how they want the content formatted. For example:
+            - "Should I add this as a new bullet point in the list format (- item)?"
+            - "Should I add this as a new line or append to the existing line?"
+            - "Should I maintain the current formatting style?"
+        4.  **Gather Content**: Get the exact content and formatting preferences from the user.
+        5.  **MANDATORY EXECUTION**: Once you have the content and formatting instructions, you MUST immediately call the appropriate tool (`read_text_file`, `write_to_text_file`, `append_to_text_file`, `replace_in_text_file`). Do NOT ask for confirmation or make a statement before calling the tool. Your ONLY next step is to call the tool.
+        6.  **Report Result**: After the tool has been called, report the result (success or error) to the user.
+
+        **STEP 4: For Information Queries**
         1.  **Use Document Search**: Call the `find_document_information` tool with a well-crafted search query.
-        2.  **Extract Key Information**: Parse the results to find the specific information requested.
-        3.  **Provide Clear Answer**: Give a direct, helpful response based on the document content.
+        2.  **Provide Answer**: Give a direct, helpful response based on the document content.
 
         **CRITICAL: Information Extraction Rules**
         - "sold by X to Y" means: Seller=X, Buyer=Y
         - "X sold Y to Z" means: Seller=X, Product=Y, Buyer=Z
-        - Always extract BOTH seller and buyer information from user requests
+        - Always extract BOTH seller and buyer information from user requests.
 
-        **Example Multi-Turn Interaction:**
+        **Example Multi-Turn Interaction (Excel):**
         User: "Can you add a square sold by greg to ian for $5000?"
         You: "I can help with that. It looks like this is a sales record, so I'll add it to `order_inventory.xlsx`. Is that correct?"
         User: "Yes"
-        You: *(Thinking... The file is confirmed. I extracted: Seller=greg, Buyer=ian, Product=square, Price=5000. Now I need schema and missing fields.)*
+        You: *(Thinking... File confirmed is `order_inventory.xlsx`. It's an Excel file. I will follow the Excel workflow. I need the schema and missing fields.)*
         You: *[Calls get_excel_schema for 'order_inventory.xlsx']*
         You: "Great. To add the record, I also need the Order Number and Part Number. What are they?"
         User: "order number 22, part number 2320232342342"
-        You: *(Thinking... Now I have all the data. I will call the 'add' tool with ALL information including seller.)*
+        You: *(Thinking... Now I have all the data. I will call the 'add' tool.)*
         You: *[Calls add_new_excel_record with filename='order_inventory.xlsx' and complete data: {"Order Number": "22", "Part Number": "2320232342342", "Order Details": "square", "Price": "5000", "Seller": "greg", "Buyer": "ian"}]*
         You: "Thank you. I have successfully added the new record to `order_inventory.xlsx`."
 
         **Example Information Query:**
         User: "Can you summarize what jobs jordan whitmore is qualified for?"
-        You: *(Thinking... This is an information query about Jordan Whitmore. I need to search documents.)*
+        You: *(Thinking... This is an information query. I need to search documents.)*
         You: *[Calls find_document_information with query: "Jordan Whitmore qualifications jobs skills experience"]*
         You: "Based on the document, Jordan Whitmore is qualified for [specific jobs/roles based on the search results]."
         """

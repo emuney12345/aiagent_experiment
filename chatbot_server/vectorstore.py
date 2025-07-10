@@ -1,6 +1,7 @@
 # chatbot-server/vectorstore.py
 
 import os
+from pathlib import Path
 from langchain_community.vectorstores import PGVector
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
@@ -19,3 +20,14 @@ def get_vectorstore():
         collection_name=COLLECTION_NAME,
         embedding_function=embeddings
     )
+
+def get_document_sources():
+    """Get all unique document sources from the vector store"""
+    vs = get_vectorstore()
+    # Query with a very broad search to get diverse results
+    docs = vs.similarity_search("", k=100)  # Get many results
+    sources = set()
+    for doc in docs:
+        if 'source' in doc.metadata:
+            sources.add(Path(doc.metadata['source']).name)
+    return list(sources)
