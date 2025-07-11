@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import logging
+import re
 
 # Set up logging for Excel operations
 logging.basicConfig(level=logging.INFO)
@@ -80,6 +81,43 @@ def read_excel_file(filename: str, sheet_name: Optional[str] = None) -> Dict[str
         logger.error(error_msg)
         raise Exception(error_msg)
 
+def _clean_data_for_excel(key: str, value: Any) -> str:
+    """
+    Intelligently clean data based on column name and content.
+    
+    Args:
+        key: Column name
+        value: The value to clean
+        
+    Returns:
+        Cleaned string value ready for Excel
+    """
+    if value is None:
+        return ""
+    
+    value_str = str(value).strip()
+    
+    # Handle price/cost/amount columns - remove commas from numbers
+    if any(keyword in key.lower() for keyword in ['price', 'cost', 'amount', 'total', 'value']):
+        # Remove commas from numeric values (e.g., "25,000" -> "25000")
+        cleaned = re.sub(r',(?=\d)', '', value_str)
+        return cleaned
+    
+    # Handle order/ID number columns - extract just the numeric part
+    if any(keyword in key.lower() for keyword in ['order', 'id', 'number', 'num']):
+        # Extract numbers from patterns like "order-23", "ID-456", etc.
+        numbers = re.findall(r'\d+', value_str)
+        if numbers:
+            # Take the last number found (most likely the actual ID)
+            return numbers[-1]
+    
+    # Handle part numbers - keep as-is (they might have letters and numbers)
+    if any(keyword in key.lower() for keyword in ['part']):
+        return value_str
+    
+    # Default: return as-is
+    return value_str
+
 def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
     """Updates a specific row in an Excel file."""
     filepath = _get_excel_path(filename)
@@ -100,7 +138,8 @@ def update_excel_row(filename: str, row_index: int, updates: Dict[str, Any], she
 
         for col, value in updates.items():
             if col in df.columns:
-                df.loc[row_index, col] = str(value)
+                # Apply intelligent data cleaning
+                df.loc[row_index, col] = _clean_data_for_excel(col, value)
             else:
                 return {"error": f"Column '{col}' not found in {filename}."}
         
@@ -136,7 +175,8 @@ def add_excel_row(filename: str, new_data: Dict[str, Any], sheet_name: Optional[
         new_row_data = {col: "" for col in df.columns}
         for key, value in new_data.items():
             if key in new_row_data:
-                new_row_data[key] = str(value)
+                # Apply intelligent data cleaning
+                new_row_data[key] = _clean_data_for_excel(key, value)
         
         new_row_df = pd.DataFrame([new_row_data])
         df = pd.concat([df, new_row_df], ignore_index=True)
