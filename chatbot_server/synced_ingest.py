@@ -58,7 +58,12 @@ def ingest_file(path: Path) -> None:
         return
     _sql_delete(path)          # de-dupe first
     vs.add_documents(chunks)
-    print(f"✅  Indexed {path.name} ({len(chunks)} chunks)")
+    
+    # Enhanced logging for bedford information files
+    if path.name.startswith("bedford_"):
+        print(f"✅  Indexed {path.name} ({len(chunks)} chunks) - Bedford Information")
+    else:
+        print(f"✅  Indexed {path.name} ({len(chunks)} chunks)")
 
 
 # ───────────────── watchdog handlers ──────────────────────────────

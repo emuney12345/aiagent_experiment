@@ -69,14 +69,135 @@ def rag_search_tool(query: str) -> str:
         except Exception as e:
             return f"Error retrieving document sources: {str(e)}"
     
-    # Regular RAG search for specific content queries
-    vectorstore = get_vectorstore()
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    prompt = PromptTemplate.from_template(
-        "You are a helpful assistant. Use the following documents to answer the question.\n\nContext:\n{context}\n\nQuestion: {question}"
-    )
-    chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever, chain_type_kwargs={"prompt": prompt})
-    return chain.run(query)
+    # === MULTI-STEP VERIFICATION PIPELINE ===
+    try:
+        # PHASE 1: Intelligent Search and Retrieval
+        vectorstore = get_vectorstore()
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+        retrieved_docs = retriever.get_relevant_documents(query)
+        
+        if not retrieved_docs:
+            return "I don't have that specific information in my knowledge base."
+        
+        # PHASE 2: Initial Response Generation
+        context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+        
+        initial_prompt = PromptTemplate.from_template(
+            """You are an intelligent assistant. Answer the question using the provided context. Be comprehensive and helpful.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+        )
+        
+        initial_chain = initial_prompt | llm
+        initial_response = initial_chain.invoke({"context": context, "question": query})
+        
+        # Extract content from LLM response
+        if hasattr(initial_response, 'content'):
+            initial_answer = initial_response.content
+        else:
+            initial_answer = str(initial_response)
+        
+        # PHASE 3: Fact Extraction and Verification
+        fact_extraction_prompt = PromptTemplate.from_template(
+            """Extract all factual claims from the following text. List each claim as a separate bullet point.
+            
+Text: {text}
+
+Factual claims:"""
+        )
+        
+        fact_chain = fact_extraction_prompt | llm
+        fact_response = fact_chain.invoke({"text": initial_answer})
+        
+        if hasattr(fact_response, 'content'):
+            extracted_facts = fact_response.content
+        else:
+            extracted_facts = str(fact_response)
+        
+        # PHASE 4: Verification Against Retrieved Context
+        verification_prompt = PromptTemplate.from_template(
+            """Given the following context and a list of factual claims, determine which claims are supported by the context.
+            
+Context:
+{context}
+
+Claims to verify:
+{claims}
+
+For each claim, respond with either:
+- VERIFIED: [claim] - if the claim is supported by the context
+- REJECTED: [claim] - if the claim is not supported by the context
+
+Verification results:"""
+        )
+        
+        verification_chain = verification_prompt | llm
+        verification_response = verification_chain.invoke({
+            "context": context,
+            "claims": extracted_facts
+        })
+        
+        if hasattr(verification_response, 'content'):
+            verification_results = verification_response.content
+        else:
+            verification_results = str(verification_response)
+        
+        # PHASE 5: Strict Context-Only Response
+        # Skip the reconstruction phase entirely - use only direct context matching
+        context_only_prompt = PromptTemplate.from_template(
+            """Answer the question using ONLY the exact information provided in the Context below. 
+            
+STRICT RULES:
+- Use ONLY information that appears word-for-word in the Context
+- Do NOT add dates, names, or details not explicitly stated in the Context
+- Do NOT make logical inferences or fill in missing information
+- Do NOT use any knowledge outside the Context
+- If the Context doesn't contain a complete answer, say "Based on the available information:" and list only what's explicitly stated
+- If the Context is unrelated, say "I don't have that specific information in my knowledge base."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer using only the exact information from the Context above:"""
+        )
+        
+        context_only_chain = context_only_prompt | llm
+        final_response = context_only_chain.invoke({
+            "question": query,
+            "context": context
+        })
+        
+        if hasattr(final_response, 'content'):
+            return final_response.content
+        else:
+            return str(final_response)
+            
+    except Exception as e:
+        # Fallback to simple RAG if verification pipeline fails
+        try:
+            vectorstore = get_vectorstore()
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+            fallback_prompt = PromptTemplate.from_template(
+                """Answer the question using only the provided context. If the context doesn't contain the answer, say "I don't have that specific information in my knowledge base."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+            )
+            chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever, chain_type_kwargs={"prompt": fallback_prompt})
+            return chain.run(query)
+        except Exception as fallback_error:
+            return f"Error retrieving information: {str(fallback_error)}"
 
 def get_excel_schema(filename: str) -> str:
     """Use this tool to get the structure, columns, and sample data of an Excel file. This is the first step for any Excel operation to know what columns are available."""
@@ -93,22 +214,56 @@ def read_excel_data(filename: str) -> str:
     except Exception as e:
         return f"Error reading Excel file: {str(e)}"
 
-def add_new_excel_record(filename: str, data: Dict[str, Any]) -> str:
-    """Use this tool to CREATE a new record or add a new row to an Excel file. The 'data' argument should be a dictionary where keys are the column names and values are the data to be added."""
+def add_new_excel_record(filename: str, order_number: str = "", part_number: str = "", order_details: str = "", price: str = "", seller: str = "", buyer: str = "", **kwargs) -> str:
+    """Use this tool to CREATE a new record or add a new row to an Excel file. Provide filename and all the required Excel columns."""
     try:
-        data_as_str = {k: str(v) for k, v in data.items()}
-        result = add_excel_row(filename.strip(), data_as_str)
+        # Build the data dict from the parameters
+        data = {
+            "Order Number": order_number,
+            "Part Number": part_number,
+            "Order Details": order_details,
+            "Price": price,
+            "Seller": seller,
+            "Buyer": buyer
+        }
+        
+        # Add any additional kwargs
+        for k, v in kwargs.items():
+            if k not in ["filename"]:  # Skip filename since it's already handled
+                data[k] = str(v)
+        
+        # Remove empty values
+        data = {k: v for k, v in data.items() if v.strip()}
+        
+        result = add_excel_row(filename.strip(), data)
         if "error" in result:
             return f"Error: {result['error']}"
         return f"Success: A new row was added to {filename}."
     except Exception as e:
         return f"An unexpected error occurred while adding a row: {str(e)}"
 
-def update_existing_excel_record(filename: str, row_index: int, updates: Dict[str, Any]) -> str:
-    """Use this tool to UPDATE or MODIFY an existing record in an Excel file. The 'updates' argument is a dictionary of the changes to make."""
+def update_existing_excel_record(filename: str, row_index: int, order_number: str = "", part_number: str = "", order_details: str = "", price: str = "", seller: str = "", buyer: str = "", **kwargs) -> str:
+    """Use this tool to UPDATE or MODIFY an existing record in an Excel file. Provide filename, row_index, and the columns to update."""
     try:
-        updates_as_str = {k: str(v) for k, v in updates.items()}
-        result = update_excel_row(filename.strip(), row_index, updates_as_str)
+        # Build the updates dict from the parameters
+        updates = {}
+        
+        if order_number: updates["Order Number"] = order_number
+        if part_number: updates["Part Number"] = part_number
+        if order_details: updates["Order Details"] = order_details
+        if price: updates["Price"] = price
+        if seller: updates["Seller"] = seller
+        if buyer: updates["Buyer"] = buyer
+        
+        # Add any additional kwargs
+        for k, v in kwargs.items():
+            if k not in ["filename", "row_index"] and v:
+                updates[k] = str(v)
+        
+        if not updates:
+            return "Error: No updates provided."
+        
+        result = update_excel_row(filename.strip(), row_index, updates)
         if "error" in result:
             return f"Error: {result['error']}"
         return f"Success: Row {row_index} in {filename} was updated."
@@ -127,9 +282,27 @@ def delete_excel_record(filename: str, row_index: int) -> str:
         return f"An unexpected error occurred while deleting a row: {str(e)}"
 
 
-def delete_excel_record_smart(filename: str, criteria: Dict[str, Any]) -> str:
-    """Use this tool to DELETE records from an Excel file by matching criteria (e.g., name, account number, etc.). This is better than delete_excel_record when you know the data values but not the row index."""
+def delete_excel_record_smart(filename: str, order_number: str = "", part_number: str = "", order_details: str = "", price: str = "", seller: str = "", buyer: str = "", **kwargs) -> str:
+    """Use this tool to DELETE records from an Excel file by matching criteria. Provide filename and the criteria to match for deletion."""
     try:
+        # Build the criteria dict from the parameters
+        criteria = {}
+        
+        if order_number: criteria["Order Number"] = order_number
+        if part_number: criteria["Part Number"] = part_number
+        if order_details: criteria["Order Details"] = order_details
+        if price: criteria["Price"] = price
+        if seller: criteria["Seller"] = seller
+        if buyer: criteria["Buyer"] = buyer
+        
+        # Add any additional kwargs
+        for k, v in kwargs.items():
+            if k not in ["filename"] and v:
+                criteria[k] = str(v)
+        
+        if not criteria:
+            return "Error: No criteria provided for deletion."
+        
         result = delete_excel_record_by_criteria(filename.strip(), criteria)
         if "error" in result:
             return f"Error: {result['error']}"
@@ -246,8 +419,15 @@ system_message = SystemMessage(
         6.  **Report Result**: After the tool has been called, report the result (success or error) to the user.
 
         **STEP 4: For Information Queries**
-        1.  **Use Document Search**: Call the `find_document_information` tool with a well-crafted search query.
-        2.  **Provide Answer**: Give a direct, helpful response based on the document content.
+        1.  **Always Search Documents First**: For ANY information question, ALWAYS call the `find_document_information` tool first with a well-crafted search query. This includes questions about:
+            - Municipal services (trash, recycling, parking, schools, etc.)
+            - Government services and hours
+            - Public transportation
+            - Community events
+            - Animal control and pet services
+            - Any topic that might be covered in local documents
+        2.  **Search Strategy**: Even if the question doesn't mention a specific location, search for relevant topics (e.g., "trash pickup" for "when is trash pickup?")
+        3.  **Provide Answer**: Give a direct, helpful response based on the document content. If no relevant information is found, then provide a general response.
 
         **CRITICAL: Information Extraction Rules**
         - "sold by X to Y" means: Seller=X, Buyer=Y
@@ -266,11 +446,22 @@ system_message = SystemMessage(
         You: *[Calls add_new_excel_record with filename='order_inventory.xlsx' and complete data: {"Order Number": "22", "Part Number": "2320232342342", "Order Details": "square", "Price": "5000", "Seller": "greg", "Buyer": "ian"}]*
         You: "Thank you. I have successfully added the new record to `order_inventory.xlsx`."
 
-        **Example Information Query:**
+        **Example Information Queries:**
+        
         User: "Can you summarize what jobs jordan whitmore is qualified for?"
         You: *(Thinking... This is an information query. I need to search documents.)*
         You: *[Calls find_document_information with query: "Jordan Whitmore qualifications jobs skills experience"]*
         You: "Based on the document, Jordan Whitmore is qualified for [specific jobs/roles based on the search results]."
+        
+        User: "When is trash pickup?"
+        You: *(Thinking... This is asking about municipal services. I should search documents first.)*
+        You: *[Calls find_document_information with query: "trash pickup schedule collection days"]*
+        You: "Based on the available information, trash pickup occurs on [days/schedule from documents]."
+        
+        User: "What are the school hours?"
+        You: *(Thinking... This is asking about school information. I should search documents.)*
+        You: *[Calls find_document_information with query: "school hours schedule"]*
+        You: "According to the school information, the hours are [specific hours from documents]."
         """
 )
 

@@ -46,7 +46,7 @@ EXTENSION_MAP = {
 
 
 def load_and_split(file_path: Path):
-    """Load one file, split into chunks, tag each chunk with its source path."""
+    """Load one file, split into chunks, tag each chunk with its source path and category."""
     loader_cls = EXTENSION_MAP.get(file_path.suffix.lower())
     if not loader_cls:
         print(f"⚠️  Skipping unsupported type: {file_path.name}")
@@ -63,6 +63,13 @@ def load_and_split(file_path: Path):
     # Tag every chunk so we can query by file name later
     for doc in chunks:
         doc.metadata["source"] = str(file_path)
+        
+        # Add category metadata for bedford information files
+        if file_path.name.startswith("bedford_"):
+            doc.metadata["category"] = "bedford_information"
+            # Extract topic from filename (e.g., "bedford_trash_recycling.txt" -> "trash_recycling")
+            topic = file_path.name.replace("bedford_", "").replace(".txt", "").replace(".pdf", "")
+            doc.metadata["topic"] = topic
 
     return chunks
 
